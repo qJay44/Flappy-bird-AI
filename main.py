@@ -168,8 +168,18 @@ def draw_window(win, bird, pipes, base, score):
     pg.display.update()
 
 
-def main():
-    bird = Bird(230, 350)
+def fitnes(genomes, config):
+    nets = []
+    ge = []
+    birds = [] 
+
+    for g in genomes:
+        net = neat.nn.FeedForwardNetwork(g, config)
+        nets.append(net)
+        birds.append(Bird(230, 350))
+        g.fintness = 0
+        ge.append(g)
+
     base = Base(730)
     pipes = [Pipe(600)]
     win = pg.display.set_mode((WIDTH, HEIGHT))
@@ -183,32 +193,70 @@ def main():
             if event.type == pg.QUIT:
                 return pg.quit()
 
-        #bird.move()
         add_pipe = False
         rem = []
         for pipe in pipes:
-            if pipe.collide(bird):
-                pass
+            for x, bird in enumerate(birds):
+                # A bird colliding with a pipe
+                if pipe.collide(bird):
+                    ge[x].fitness -= 1
+                    birds.pop(x)
+                    nets.pop(x)
+                    ge.pop(x)
+
+                # Bird passed a pipe
+                if not pipe.passed and pipe.x < birds.x:
+                    pipe.passed = True
+                    add_pipe = True
+
+            # Add a pipe to remove list when it is not on the screen
             if pipe.x + pipe.PIPE_TOP.get_width() < 0:
                 rem.append(pipe)
-            if not pipe.passed and pipe.x < bird.x:
-                pipe.passed = True
-                add_pipe = True
                 
             pipe.move()
         
+        # Create new pipe
         if add_pipe:
             score += 1
+            for g in ge:
+                g.fitness += 5
             pipes.append(Pipe(600))
         
+        # Remove listed pipes
         for r in rem:
             pipes.remove(r)
         
-        if bird.y + bird.img.get_height() > 730:
-            pass
+        # Hits the ground
+        for x, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() > 730:
+                birds.pop(x)
+                nets.pop(x)
+                ge.pop(x)
 
         base.move()
         draw_window(win, bird, pipes, base, score)
 
 
-main()
+def run(config_path):
+    config = neat.config.Config(
+        neat.DefaultGenome,
+        neat.DefaultReproduction,
+        neat.DefaultSpeciesSet,
+        neat.DefaultStagnation,
+        config_path
+    )
+
+    stats = neat.StatisticsReporter()
+
+    # Population
+    p = neat.Population(config)
+    p.add_reporter(neat.StdOutReporter(True))
+    p.add_reporter(stats)
+
+    winner = p.run(fitnes, 50)
+
+
+if __name__ == '__main__':
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'config-feedforward.txt')
+    run(config_path)
