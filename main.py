@@ -1,6 +1,5 @@
 import pygame as pg
 import neat
-import time
 import os
 import random
 
@@ -15,7 +14,7 @@ BIRD_IMGS = [
 PIPE_IMG = pg.transform.scale2x(pg.image.load(os.path.join('imgs', 'pipe.png')))
 BASE_IMG = pg.transform.scale2x(pg.image.load(os.path.join('imgs', 'base.png')))
 BG_IMG = pg.transform.scale2x(pg.image.load(os.path.join('imgs', 'bg.png')))
-STAT_FONT = pg.font.SysFont("comicsans", 50)
+STAT_FONT = pg.font.SysFont("comicsans", 30)
 
 
 class Bird:
@@ -23,6 +22,7 @@ class Bird:
     MAX_ROTATION = 25
     ROT_VEL = 20
     ANIMATION_TIME = 5
+    gen = 0
     
     def __init__(self, x, y):
         self.x = x
@@ -154,7 +154,7 @@ class Base:
         win.blit(self.IMG, (self.x2, self.y))
 
 
-def draw_window(win, bird, pipes, base, score):
+def draw_window(win, birds, pipes, base, score):
     win.blit(BG_IMG, (0, 0))
 
     for pipe in pipes:
@@ -162,9 +162,15 @@ def draw_window(win, bird, pipes, base, score):
     
     text = STAT_FONT.render(f"Score: {score}", 1, (255, 255, 255))
     win.blit(text, (WIDTH - 10 - text.get_width(), 10))
+
+    text = STAT_FONT.render(f"Gen: {Bird.gen}", 1, (255, 255, 255))
+    win.blit(text, (10, 10))
         
     base.draw(win)
-    bird.draw(win)
+
+    for bird in birds:
+        bird.draw(win)
+
     pg.display.update()
 
 
@@ -173,11 +179,11 @@ def fitnes(genomes, config):
     ge = []
     birds = [] 
 
-    for g in genomes:
-        net = neat.nn.FeedForwardNetwork(g, config)
+    for _, g in genomes:
+        net = neat.nn.FeedForwardNetwork.create(g, config)
         nets.append(net)
         birds.append(Bird(230, 350))
-        g.fintness = 0
+        g.fitness = 0
         ge.append(g)
 
     base = Base(730)
@@ -187,17 +193,36 @@ def fitnes(genomes, config):
 
     score = 0
 
+    Bird.gen += 1
     while True:
         clock.tick(30)
         for event in pg.event.get():
             if event.type == pg.QUIT:
-                return pg.quit()
+                pg.quit()
+                quit()
+        
+        # Count pipes
+        pipe_ind = 0
+        if len(birds) > 0:
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+                pipe_ind = 1
+        else:
+            break
+        
+        for x, bird in enumerate(birds):
+            bird.move()
+            ge[x].fitness += 0.1
+            
+            output = nets[x].activate((bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
+
+            if output[0] > 0.5:
+                bird.jump()
 
         add_pipe = False
         rem = []
         for pipe in pipes:
             for x, bird in enumerate(birds):
-                # A bird colliding with a pipe
+                # Bird colliding with a pipe
                 if pipe.collide(bird):
                     ge[x].fitness -= 1
                     birds.pop(x)
@@ -205,7 +230,7 @@ def fitnes(genomes, config):
                     ge.pop(x)
 
                 # Bird passed a pipe
-                if not pipe.passed and pipe.x < birds.x:
+                if not pipe.passed and pipe.x < bird.x:
                     pipe.passed = True
                     add_pipe = True
 
@@ -228,13 +253,13 @@ def fitnes(genomes, config):
         
         # Hits the ground
         for x, bird in enumerate(birds):
-            if bird.y + bird.img.get_height() > 730:
+            if bird.y + bird.img.get_height() > 730 or bird.y < 0:
                 birds.pop(x)
                 nets.pop(x)
                 ge.pop(x)
 
         base.move()
-        draw_window(win, bird, pipes, base, score)
+        draw_window(win, birds, pipes, base, score)
 
 
 def run(config_path):
